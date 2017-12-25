@@ -27,22 +27,29 @@ while cap.isOpened():
     gray = cv2.Canny(gray, 100, 200)
     gray = np.bitwise_and(gray, roi)
 
-    lines = cv2.HoughLines(gray,1,np.pi/180,200)
-    if not lines == None:
-        for rho,theta in lines[0]:
-            a = np.cos(theta)
-            b = np.sin(theta)
-            x0 = a*rho
-            y0 = b*rho
-            x1 = int(x0 + 1000*(-b))
-            y1 = int(y0 + 1000*(a))
-            x2 = int(x0 - 1000*(-b))
-            y2 = int(y0 - 1000*(a))
+    lines = cv2.HoughLines(gray,1,np.pi/180,50)
+    if lines is not None:
+        ldone, rdone = False, False
+        for i in range(0, len(lines)):
+            rho = lines[i][0][0]
+            theta = lines[i][0][1]       
 
-            cv2.line(gray,(x1,y1),(x2,y2),(0,0,255),2)
+            x1 = int(rho*np.cos(theta) + 1000*(-np.sin(theta)))
+            y1 = int(rho*np.sin(theta) + 1000*(np.cos(theta)))
 
-    cv2.imshow('frame', gray)
-    
+            x2 = int(rho*np.cos(theta) - 1000*(-np.sin(theta)))
+            y2 = int(rho*np.sin(theta) - 1000*(np.cos(theta)))
+            
+            if rho > 0 and not ldone:
+                cv2.line(frame,(x1,y1),(x2,y2),(255,0,255),2)    
+                ldone = True
+
+            if rho < 0 and not rdone:
+                cv2.line(frame,(x1,y1),(x2,y2),(255,0,255),2)    
+                rdone = True
+
+    cv2.imshow("vidg",gray)
+    cv2.imshow("vid",frame)
     time.sleep(0.05)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
