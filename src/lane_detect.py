@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 
 
-cap = cv2.VideoCapture(r'../data/challenge.mp4')
+cap = cv2.VideoCapture(r'../data/solidYellowLeft.mp4')
 
 ret, frame = cap.read()
 roi = None
@@ -15,6 +15,7 @@ if ret:
     height, width = frame.shape
     pts = np.array([[0.05*width, 0.90*height], [0.45*width, 0.6*height], [0.55*width, 0.6*height], [0.95*width, 0.90*height]], np.int32)
     cv2.fillPoly(roi, [pts], (255, 255, 255))
+    iroi = cv2.bitwise_not(roi)
 
 
 while cap.isOpened():
@@ -27,7 +28,9 @@ while cap.isOpened():
     gray = cv2.Canny(gray, 100, 200)
     gray = np.bitwise_and(gray, roi)
 
-    lines = cv2.HoughLines(gray,1,np.pi/180,50)
+    frame1 = cv2.bitwise_and(frame,frame, mask=iroi)
+    
+    lines = cv2.HoughLines(gray,1,np.pi/180,30)
     if lines is not None:
         ldone, rdone = False, False
         for i in range(0, len(lines)):
@@ -41,15 +44,19 @@ while cap.isOpened():
             y2 = int(rho*np.sin(theta) - 1000*(np.cos(theta)))
             
             if rho > 0 and not ldone:
-                cv2.line(frame,(x1,y1),(x2,y2),(255,0,255),2)    
+                cv2.line(frame,(x1,y1),(x2,y2),(255,0,255),4)    
                 ldone = True
 
             if rho < 0 and not rdone:
-                cv2.line(frame,(x1,y1),(x2,y2),(255,0,255),2)    
+                cv2.line(frame,(x1,y1),(x2,y2),(255,0,255),4)    
                 rdone = True
 
+    
+    frame2 = cv2.bitwise_or(frame, frame, mask=roi)
+    res = cv2.bitwise_or(frame1,frame2)
+
     cv2.imshow("vidg",gray)
-    cv2.imshow("vid",frame)
+    cv2.imshow("vid",res)
     time.sleep(0.05)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
