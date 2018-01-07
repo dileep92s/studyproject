@@ -18,14 +18,13 @@ roi = cv2.fillPoly(roi, [roi_pt], (255, 255, 255))
 # cap = cv2.VideoCapture(0)
 
 # capture video from video file
-# cap = cv2.VideoCapture(r'../data/solidYellowLeft.mp4')
-cap = cv2.VideoCapture(r'../data/solidWhiteRight.mp4')
+cap = cv2.VideoCapture(r'../data/solidYellowLeft.mp4')
+# cap = cv2.VideoCapture(r'../data/solidWhiteRight.mp4')
 # cap = cv2.VideoCapture(r'../data/challenge.mp4')
 
 # needed for storing the output
 fourcc = cv2.VideoWriter_fourcc(*'DIVX')
 out = cv2.VideoWriter('output.avi',fourcc, 20.0, resize)
-
 
 while cap.isOpened():
     # read frames
@@ -35,7 +34,7 @@ while cap.isOpened():
     
     # change resolution to improve performance
     frame = cv2.resize(frame, resize)
-    cv2.imshow("orig", frame)
+    # cv2.imshow("orig", frame)
 
     # step1 convert to grayscale
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -44,7 +43,7 @@ while cap.isOpened():
     gray = cv2.GaussianBlur(gray, (5,5), 0)
     # step3 region of interest
     gray = cv2.bitwise_and(gray, roi)
-    cv2.imshow("canny", gray)
+    # cv2.imshow("canny", gray)
     # cv2.waitKey(0)
     
     # step4 hough line transform
@@ -117,14 +116,20 @@ while cap.isOpened():
             x2 = int(0.5*width)
             frame = cv2.circle(frame, (x2, y1), 2, (255,0,255), 2)
             deviation = (1-(x1/x2))*100
+            if deviation > 3:
+                print("right")
+            elif deviation < -3:
+                print("left")            
+            else:
+                print("middle")
+
             deviation = "%0.2f" %deviation
             cv2.putText(frame, str(deviation), (x2,y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255,255,0), 1, cv2.LINE_AA)
-
 
     # display and save the output video
     cv2.imshow("final", frame)
     out.write(frame)
-    time.sleep(1/30)
+    # time.sleep(1/30)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         quit(1)
 
