@@ -18,8 +18,8 @@ resize = (width, height)
 # region of interest
 roi = np.zeros((height, width), np.uint8)
 #bottom left, top left, top right, bottom right
-roi_pt = np.array([ [0.01*width, 0.99*height], [0.35*width, 0.55*height],
-                    [0.65*width, 0.55*height],  [0.99*width, 0.99*height]], np.int32)
+roi_pt = np.array([ [0.01*width, 0.99*height], [0.01*width, 0.8*height], [0.40*width, 0.55*height],
+                    [0.60*width, 0.55*height],  [0.99*width, 0.8*height], [0.99*width, 0.99*height]], np.int32)
 # create a roi mask
 roi = cv2.fillPoly(roi, [roi_pt], (255, 255, 255))
 
@@ -27,25 +27,26 @@ roi = cv2.fillPoly(roi, [roi_pt], (255, 255, 255))
 fourcc = cv2.VideoWriter_fourcc(*'DIVX')
 out = cv2.VideoWriter('output.avi',fourcc, 20.0, resize)
 
-for i in range(1,2):
+for i in range(1,3):
     print(i)
     time.sleep(1)
 print("ready")
 
-xo = 10
+xo = 0
 yo = 20
 key_press = True
+lc, rc = 0, 0 
 while True:
     # read frames
-    frame = grab_screen(region=(xo, yo, 1024, 768))   
+    frame = grab_screen(region=(xo, yo, 1024-10, 768-10))   
     # change resolution to improve performance
     frame = cv2.resize(frame, resize)
-    # cv2.imshow("orig", frame)
+    cv2.imshow("orig", frame)
 
     # step1 convert to grayscale
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     # step2 edge detection
-    gray = cv2.Canny(gray, 50, 200)
+    gray = cv2.Canny(gray, 50, 100)
     gray = cv2.GaussianBlur(gray, (5,5), 0)
     # step3 region of interest
     gray = cv2.bitwise_and(gray, roi)
@@ -53,7 +54,7 @@ while True:
     # cv2.waitKey(0)
     
     # step4 hough line transform
-    lines = cv2.HoughLinesP(gray, 1, np.pi/180, 30, np.array([]), 10, 200)
+    lines = cv2.HoughLinesP(gray, 1, np.pi/180, 100, np.array([]), 20, 200)
     # print(lines)
     if lines is not None:
         # strategy - take average slope for left lanes and right lanes
@@ -61,27 +62,26 @@ while True:
 
         for line in lines:
             line = line[0]
+            x1, y1, x2, y2 = line
             # slope
             m = 0
-            y = (line[3]-line[1])
-            x = (line[2]-line[0])
+            y = float(y2-y1)
+            x = float(x2-x1)
             if x != 0:
                 m = y/x
+            # print(line, m)
+            # frame = cv2.line(frame, (x1, y1), (x2, y2), (150,150,150), 1)
             
-            if m == 0 or m < 0 and m > -0.5:
+            # ignore horizontal lines
+            if m == 0 or m < 0 and m > -0.03:
                 continue
-            elif m > 0 and m < 0.5:
+            elif m > 0 and m < 0.03:
                 continue            
+
             # intercept
             b = line[1] - (m * line[0])
             # weight / length of line
             w = np.linalg.norm(np.reshape(line, (2,2)))
-            
-            # filter out horizontal lines
-            if m <= 0 and m > -0.5:
-                continue
-            elif m > 0 and m < 0.5:
-                continue
 
             if m < 0:
                 calc['left'] += np.array([m*w, b*w, w])
@@ -90,6 +90,7 @@ while True:
 
         dots = []
         #d raw overlay
+
         for key in calc:
             value = calc[key]
             weight = value[2]
@@ -112,6 +113,7 @@ while True:
             dots.append([x1,y1])
         
         # draw deviation from centre 
+        ct = 10
         if len(dots) == 2:
             x1 = dots[0][0]
             x2 = dots[1][0]
@@ -122,26 +124,31 @@ while True:
             x2 = int(0.5*width)
             frame = cv2.circle(frame, (x2, y1), 2, (255,0,255), 2)
             deviation = (1-(x1/x2))*100
-            if deviation > 3:
+            if deviation > 1 and  deviation < 60:
                 print("left")
-                if key_press:
+                if key_press and lc < ct:
                     PressKey(A)
-                    time.sleep(0.01)
-                    # ReleaseKey(A)
-            elif deviation < -3:
+                    time.sleep(0.1)
+                    lc += 1
+                    rc = 0
+                    ReleaseKey(A)
+            elif deviation < -1 and deviation > -60:
                 print("right")
-                if key_press:
+                if key_press and rc < ct:
                     PressKey(D)
-                    time.sleep(0.01)                    
-                    # ReleaseKey(D)          
+                    time.sleep(0.1)
+                    rc += 1
+                    lc = 0
+                    ReleaseKey(D)          
             else:
                 print("middle")
                 if key_press:
                     # PressKey(W)
-                    # time.sleep(0.09) 
-                    ReleaseKey(W)
+                    # time.sleep(0.1)
                     ReleaseKey(A)
                     ReleaseKey(D)
+                    lc = 0
+                    rc = 0
 
             deviation = "%0.2f" %deviation
             cv2.putText(frame, str(deviation), (x2,y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255,255,0), 1, cv2.LINE_AA)
@@ -152,12 +159,10 @@ while True:
     # display and save the output video
     cv2.imshow("final", frame)
     print(time.ctime())
-    if key_press:
-        PressKey(W)
-        time.sleep(0.09) 
-        ReleaseKey(W)
-        ReleaseKey(A)
-        ReleaseKey(D)
+    # if key_press:
+        # PressKey(W)
+        # time.sleep(0.05) 
+        # ReleaseKey(W)
     # out.write(frame)
     # time.sleep(1/30)
     if cv2.waitKey(1) & 0xFF == ord('q'):
