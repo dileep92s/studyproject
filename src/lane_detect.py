@@ -9,8 +9,8 @@ resize = (width, height)
 # region of interest
 roi = np.zeros((height, width), np.uint8)
 #bottom left, top left, top right, bottom right
-roi_pt = np.array([ [0.05*width, 0.9*height], [0.45*width, 0.6*height],
-                    [0.55*width, 0.6*height],  [0.95*width, 0.9*height]], np.int32)
+roi_pt = np.array([ [0.05*width, 0.95*height], [0.45*width, 0.6*height],
+                    [0.55*width, 0.6*height],  [0.95*width, 0.95*height]], np.int32)
 # create a roi mask
 roi = cv2.fillPoly(roi, [roi_pt], (255, 255, 255))
 
@@ -19,8 +19,8 @@ roi = cv2.fillPoly(roi, [roi_pt], (255, 255, 255))
 
 # capture video from video file
 # cap = cv2.VideoCapture(r'../data/solidYellowLeft.mp4')
-# cap = cv2.VideoCapture(r'../data/solidWhiteRight.mp4')
-cap = cv2.VideoCapture(r'../data/challenge.mp4')
+cap = cv2.VideoCapture(r'../data/solidWhiteRight.mp4')
+# cap = cv2.VideoCapture(r'../data/challenge.mp4')
 
 # needed for storing the output
 fourcc = cv2.VideoWriter_fourcc(*'DIVX')
@@ -83,6 +83,8 @@ while cap.isOpened():
             else:
                 calc['right'] += np.array([m*w, b*w, w])
 
+        dots = []
+        #d raw overlay
         for key in calc:
             value = calc[key]
             weight = value[2]
@@ -91,9 +93,33 @@ while cap.isOpened():
             slope = value[0]/weight
             intercept = value[1]/weight
             # draw overlay
-            x1 = int((height-intercept)/slope)
-            x2 = int(((height*0.65)-intercept)/slope)
-            frame = cv2.line(frame, (x1, height), (x2, int(0.65*height)), (255,0,0),4)                       
+            y1 = int(height)
+            x1 = int((y1-intercept)/slope)
+            
+            y2 = int(height*0.65)
+            x2 = int((y2-intercept)/slope)
+
+            frame = cv2.line(frame, (x1, y1), (x2, y2), (255,0,0),2)
+
+            y1 = int(height*0.9)
+            x1 = int((y1-intercept)/slope)
+            frame = cv2.circle(frame, (x1, y1), 2, (0,255,0), 2)
+            dots.append([x1,y1])
+        
+        # draw deviation from centre 
+        if len(dots) == 2:
+            x1 = dots[0][0]
+            x2 = dots[1][0]
+            x1 = int((x1+x2)/2)
+            y1 = int(0.9*height)
+            frame = cv2.circle(frame, (x1, y1), 2, (0,0,255), 2)
+
+            x2 = int(0.5*width)
+            frame = cv2.circle(frame, (x2, y1), 2, (255,0,255), 2)
+            deviation = (1-(x1/x2))*100
+            deviation = "%0.2f" %deviation
+            cv2.putText(frame, str(deviation), (x2,y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255,255,0), 1, cv2.LINE_AA)
+
 
     # display and save the output video
     cv2.imshow("final", frame)
