@@ -3,51 +3,166 @@ import time
 import cv2
 import numpy as np
 from grabscreen import grab_screen
+from directkeys import PressKey, ReleaseKey, W, A, S, D
+from threading import Thread
+
+class Control(Thread):
+
+    def run():
+        pass
 
 
-roi = None
-iroi = None
+# resize to this resolution to improve performance
+width, height = (640, 360)
+resize = (width, height)
+# region of interest
+roi = np.zeros((height, width), np.uint8)
+#bottom left, top left, top right, bottom right
+roi_pt = np.array([ [0.01*width, 0.99*height], [0.35*width, 0.55*height],
+                    [0.65*width, 0.55*height],  [0.99*width, 0.99*height]], np.int32)
+# create a roi mask
+roi = cv2.fillPoly(roi, [roi_pt], (255, 255, 255))
 
-while 1:
-    frame = grab_screen(region=(40, 80, 640, 480))
-    # frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR) 
+# needed for storing the output
+fourcc = cv2.VideoWriter_fourcc(*'DIVX')
+out = cv2.VideoWriter('output.avi',fourcc, 20.0, resize)
+
+for i in range(1,2):
+    print(i)
+    time.sleep(1)
+print("ready")
+
+xo = 10
+yo = 20
+key_press = True
+while True:
+    # read frames
+    frame = grab_screen(region=(xo, yo, 1024, 768))   
+    # change resolution to improve performance
+    frame = cv2.resize(frame, resize)
+    # cv2.imshow("orig", frame)
+
+    # step1 convert to grayscale
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-    if roi is None:
-        roi = np.zeros(gray.shape, np.uint8)
-        height, width = gray.shape
-        pts = np.array([[0.05*width, 0.90*height], [0.45*width, 0.6*height], [0.55*width, 0.6*height], [0.95*width, 0.90*height]], np.int32)
-        cv2.fillPoly(roi, [pts], (255, 255, 255))
-        iroi = cv2.bitwise_not(roi)
-
-    gray = cv2.GaussianBlur(gray, (5, 5), 0)
-    gray = cv2.Canny(gray, 100, 200)
-    gray = cv2.GaussianBlur(gray, (5, 5), 0)
-    gray = np.bitwise_and(gray, roi)
-
-    frame1 = cv2.bitwise_and(frame,frame, mask=iroi)
-    lines = cv2.HoughLinesP(gray,1,np.pi/180,100,np.array([]),100,50)
-    yy2 = 0
-    yy1 = 0
-    if lines is not None:
-        for line in lines:
-            # print line
-            for x1,y1,x2,y2 in line:
-                if y1 not in range(yy1-200,yy1+200):
-                    cv2.line(frame,(x1,y1),(x2,y2),(0,255,0),2)
-                    yy1 = (y1 + yy1)/2;
-                if y2 not in range(yy2-200,yy2+200):
-                    cv2.line(frame,(x1,y1),(x2,y2),(255,0,0),2)
-                    yy2 = (y2 + yy2)/2;
-
+    # step2 edge detection
+    gray = cv2.Canny(gray, 50, 200)
+    gray = cv2.GaussianBlur(gray, (5,5), 0)
+    # step3 region of interest
+    gray = cv2.bitwise_and(gray, roi)
+    cv2.imshow("canny", gray)
+    # cv2.waitKey(0)
     
-    frame2 = cv2.bitwise_or(frame, frame, mask=roi)
-    res = cv2.bitwise_or(frame1,frame2)
+    # step4 hough line transform
+    lines = cv2.HoughLinesP(gray, 1, np.pi/180, 30, np.array([]), 10, 200)
+    # print(lines)
+    if lines is not None:
+        # strategy - take average slope for left lanes and right lanes
+        calc = {'left':np.array([0.0,0.0,0.0]), 'right':np.array([0.0,0.0,0.0])}
 
-    cv2.imshow("vidg",gray)
-    cv2.imshow("vid",res)
-    time.sleep(0.05)
+        for line in lines:
+            line = line[0]
+            # slope
+            m = 0
+            y = (line[3]-line[1])
+            x = (line[2]-line[0])
+            if x != 0:
+                m = y/x
+            
+            if m == 0 or m < 0 and m > -0.5:
+                continue
+            elif m > 0 and m < 0.5:
+                continue            
+            # intercept
+            b = line[1] - (m * line[0])
+            # weight / length of line
+            w = np.linalg.norm(np.reshape(line, (2,2)))
+            
+            # filter out horizontal lines
+            if m <= 0 and m > -0.5:
+                continue
+            elif m > 0 and m < 0.5:
+                continue
+
+            if m < 0:
+                calc['left'] += np.array([m*w, b*w, w])
+            else:
+                calc['right'] += np.array([m*w, b*w, w])
+
+        dots = []
+        #d raw overlay
+        for key in calc:
+            value = calc[key]
+            weight = value[2]
+            if weight == 0.0:
+                continue            
+            slope = value[0]/weight
+            intercept = value[1]/weight
+            # draw overlay
+            y1 = int(height)
+            x1 = int((y1-intercept)/slope)
+            
+            y2 = int(height*0.65)
+            x2 = int((y2-intercept)/slope)
+
+            frame = cv2.line(frame, (x1, y1), (x2, y2), (255,0,0),2)
+
+            y1 = int(height*0.9)
+            x1 = int((y1-intercept)/slope)
+            frame = cv2.circle(frame, (x1, y1), 2, (0,255,0), 2)
+            dots.append([x1,y1])
+        
+        # draw deviation from centre 
+        if len(dots) == 2:
+            x1 = dots[0][0]
+            x2 = dots[1][0]
+            x1 = int((x1+x2)/2)
+            y1 = int(0.9*height)
+            frame = cv2.circle(frame, (x1, y1), 2, (0,0,255), 2)
+
+            x2 = int(0.5*width)
+            frame = cv2.circle(frame, (x2, y1), 2, (255,0,255), 2)
+            deviation = (1-(x1/x2))*100
+            if deviation > 3:
+                print("left")
+                if key_press:
+                    PressKey(A)
+                    time.sleep(0.01)
+                    # ReleaseKey(A)
+            elif deviation < -3:
+                print("right")
+                if key_press:
+                    PressKey(D)
+                    time.sleep(0.01)                    
+                    # ReleaseKey(D)          
+            else:
+                print("middle")
+                if key_press:
+                    # PressKey(W)
+                    # time.sleep(0.09) 
+                    ReleaseKey(W)
+                    ReleaseKey(A)
+                    ReleaseKey(D)
+
+            deviation = "%0.2f" %deviation
+            cv2.putText(frame, str(deviation), (x2,y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255,255,0), 1, cv2.LINE_AA)
+
+    x1 = int(width/2)
+    y1 = int(height*0.9)
+    frame = cv2.circle(frame, (x1, y1), 2, (255,0,255), 2)
+    # display and save the output video
+    cv2.imshow("final", frame)
+    print(time.ctime())
+    if key_press:
+        PressKey(W)
+        time.sleep(0.09) 
+        ReleaseKey(W)
+        ReleaseKey(A)
+        ReleaseKey(D)
+    # out.write(frame)
+    # time.sleep(1/30)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
+# close all opened files
+out.release()
 cv2.destroyAllWindows()
