@@ -6,10 +6,41 @@ from grabscreen import grab_screen
 from directkeys import PressKey, ReleaseKey, W, A, S, D
 from threading import Thread
 
-class Control(Thread):
+class KeyPress(Thread):
+    ''' press keys'''
 
-    def run():
-        pass
+    def __init__(self, key, delay):
+        self.key = key
+        self.delay = delay
+        Thread.__init__(self)
+
+    def run(self):
+        if self.key == D:
+            self.right()
+        elif self.key == A:
+            self.left()
+        elif self.key == W:
+            self.straight()
+
+    def straight(self):
+        PressKey(W)
+        time.sleep(self.delay)
+        ReleaseKey(A)
+        ReleaseKey(D)
+
+    def left(self):
+        PressKey(A)
+        time.sleep(self.delay)
+        ReleaseKey(W)
+        ReleaseKey(D)
+        ReleaseKey(A)
+
+    def right(self):
+        PressKey(D)
+        time.sleep(self.delay)
+        ReleaseKey(A)
+        ReleaseKey(W)
+        ReleaseKey(D)      
 
 
 # resize to this resolution to improve performance
@@ -18,8 +49,8 @@ resize = (width, height)
 # region of interest
 roi = np.zeros((height, width), np.uint8)
 #bottom left, top left, top right, bottom right
-roi_pt = np.array([ [0.01*width, 0.99*height], [0.01*width, 0.8*height], [0.40*width, 0.55*height],
-                    [0.60*width, 0.55*height],  [0.99*width, 0.8*height], [0.99*width, 0.99*height]], np.int32)
+roi_pt = np.array([ [0.01*width, 0.99*height], [0.01*width, 0.8*height], [0.47*width, 0.55*height],
+                    [0.53*width, 0.55*height],  [0.99*width, 0.8*height], [0.99*width, 0.99*height]], np.int32)
 # create a roi mask
 roi = cv2.fillPoly(roi, [roi_pt], (255, 255, 255))
 
@@ -35,7 +66,6 @@ print("ready")
 xo = 0
 yo = 20
 key_press = True
-lc, rc = 0, 0 
 while True:
     # read frames
     frame = grab_screen(region=(xo, yo, 1024-10, 768-10))   
@@ -113,7 +143,6 @@ while True:
             dots.append([x1,y1])
         
         # draw deviation from centre 
-        ct = 10
         if len(dots) == 2:
             x1 = dots[0][0]
             x2 = dots[1][0]
@@ -124,31 +153,22 @@ while True:
             x2 = int(0.5*width)
             frame = cv2.circle(frame, (x2, y1), 2, (255,0,255), 2)
             deviation = (1-(x1/x2))*100
-            if deviation > 1 and  deviation < 60:
+            t = 0.01*np.abs(deviation)
+            if deviation > 3 and  deviation < 60:
                 print("left")
-                if key_press and lc < ct:
-                    PressKey(A)
-                    time.sleep(0.1)
-                    lc += 1
-                    rc = 0
-                    ReleaseKey(A)
-            elif deviation < -1 and deviation > -60:
+                q = KeyPress(A, t)
+                q.start()
+                # left(t)
+            elif deviation < -3 and deviation > -60:
                 print("right")
-                if key_press and rc < ct:
-                    PressKey(D)
-                    time.sleep(0.1)
-                    rc += 1
-                    lc = 0
-                    ReleaseKey(D)          
-            else:
-                print("middle")
-                if key_press:
-                    # PressKey(W)
-                    # time.sleep(0.1)
-                    ReleaseKey(A)
-                    ReleaseKey(D)
-                    lc = 0
-                    rc = 0
+                q = KeyPress(D, t)
+                q.start()
+                # right(t)
+            # else:
+            print("straight")
+            # straight(0.5)
+            q = KeyPress(W, 0.5)
+            q.start()
 
             deviation = "%0.2f" %deviation
             cv2.putText(frame, str(deviation), (x2,y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255,255,0), 1, cv2.LINE_AA)
@@ -158,11 +178,7 @@ while True:
     frame = cv2.circle(frame, (x1, y1), 2, (255,0,255), 2)
     # display and save the output video
     cv2.imshow("final", frame)
-    print(time.ctime())
-    # if key_press:
-        # PressKey(W)
-        # time.sleep(0.05) 
-        # ReleaseKey(W)
+    print(time.time())
     # out.write(frame)
     # time.sleep(1/30)
     if cv2.waitKey(1) & 0xFF == ord('q'):
