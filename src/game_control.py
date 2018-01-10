@@ -1,15 +1,20 @@
 '''lane detection'''
 import time
+from threading import Thread
+
 import cv2
 import numpy as np
-from threading import Thread
+
+from directkeys import A, D, PressKey, ReleaseKey, S, W
+from grabscreen import grab_screen
+
 
 class KeyPress(Thread):
     ''' press keys'''
 
     def __init__(self, key, delay):
         self.key = key
-        self.delay = delay
+        self.delay = 0 if delay < 0 else delay
         Thread.__init__(self)
 
     def run(self):
@@ -28,10 +33,9 @@ class KeyPress(Thread):
 
 class Adrive:
 
-    def __init__(self, source, record=False):
+    def __init__(self, record=False):
         self.width, self.height = (640, 360)
         self.roi_mask = self.create_roi()
-        self.source = source
         self.record = record
         self.frame = None
         self.err_p_old = 0
@@ -136,20 +140,23 @@ class Adrive:
             print(err, err_p, err_d, delay)
             if err < 100 and err > 3:
                 print("right") 
+                key = KeyPress(D, delay)
+                key.start()
             elif err < -3 and err > -100:
                 print("left") 
+                key = KeyPress(A, delay)
+                key.start()
             elif err < 3 and err > -3:
-                print("straight")         
+                print("straight") 
+            key = KeyPress(W, 0.1)
+            key.start()            
         
             err = "%0.2f" %err
             cv2.putText(self.frame, str(err), (mid_x-20, my_y+20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255,255,255), 1, cv2.LINE_AA)
 
     def start(self):
-        cap = cv2.VideoCapture(self.source)
-        while cap.isOpened():
-            ret, self.frame = cap.read()
-            if not ret:
-                break
+        while True:
+            self.frame = grab_screen(region=(0, 0, 1024-10, 768-10))
             self.frame = cv2.resize(self.frame, (self.width, self.height))
             maskf = self.prepare_frame()
             lines = cv2.HoughLinesP(maskf, 1, np.pi/180, 100, np.array([]), 20, 200)
@@ -161,14 +168,15 @@ class Adrive:
                 break
             if self.record:
                 self.record.write(self.frame)
-        cap.release()
 
     def __del__(self):
         if self.record:
             self.record.release()
             cv2.destroyAllWindows()
 
-
 if __name__ == "__main__":
-    myapp = Adrive(r'data.mp4', record=True)
+    myapp = Adrive(record=True)
+    for i in range(3):
+        print(i)
+        time.sleep(1)
     myapp.start()
